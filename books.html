@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Books — Funstore Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1>📚 Books</h1>
+        <p id="bookCount">Loading...</p>
+      </div>
+      <button class="btn btn-primary" onclick="openModal()">+ Add Book</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="toolbar" style="margin:0;width:100%;">
+          <div class="search-wrap">
+            <span class="si">🔍</span>
+            <input type="search" id="searchInput" placeholder="Search by title, author, ISBN..." oninput="render()" />
+          </div>
+          <select class="form-control" id="catFilter" style="width:200px;" onchange="render()">
+            <option value="">All Categories</option>
+          </select>
+          <select class="form-control" id="availFilter" style="width:160px;" onchange="render()">
+            <option value="">All Status</option>
+            <option value="available">Available</option>
+            <option value="unavailable">Fully Issued</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Book Title</th>
+              <th>Author</th>
+              <th>Category</th>
+              <th>ISBN</th>
+              <th>Copies</th>
+              <th>Available</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bookTable"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD / EDIT MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Add Book</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bookId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Book Title *</label>
+          <input class="form-control" id="fName" placeholder="Enter book title" />
+        </div>
+        <div class="form-group">
+          <label>Author *</label>
+          <input class="form-control" id="fAuthor" placeholder="Author name" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Category *</label>
+          <select class="form-control" id="fCategory">
+            <option value="">Select Category</option>
+            <option>Programming</option><option>Data Structures</option><option>Database</option>
+            <option>Operating Systems</option><option>Networks</option><option>Software Engineering</option>
+            <option>Mathematics</option><option>Computer Architecture</option><option>Artificial Intelligence</option>
+            <option>Theory of Computation</option><option>Web Development</option><option>Compiler Design</option>
+            <option>Security</option><option>Advanced</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ISBN</label>
+          <input class="form-control" id="fIsbn" placeholder="978-XXXXXXXXXX" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Total Copies *</label>
+          <input class="form-control" id="fCopies" type="number" min="1" placeholder="e.g. 5" />
+        </div>
+        <div class="form-group">
+          <label>Available Copies *</label>
+          <input class="form-control" id="fAvailable" type="number" min="0" placeholder="e.g. 5" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <textarea class="form-control" id="fDesc" rows="3" placeholder="Brief description of the book..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBook()">Save Book</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="sidebar.js"></script>
+<script>
+  const session = checkAuth();
+  document.getElementById('sidebar').innerHTML = sidebarHTML('books', session);
+
+  let allBooks = [], filtered = [], page = 1, perPage = 20;
+
+  function load() {
+    allBooks = getBooks();
+    // Populate category filter
+    const cats = [...new Set(allBooks.map(b => b.category))].sort();
+    const cf = document.getElementById('catFilter');
+    const curr = cf.value;
+    cf.innerHTML = '<option value="">All Categories</option>' + cats.map(c => `<option ${c===curr?'selected':''}>${c}</option>`).join('');
+    render();
+  }
+
+  function render() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const cat = document.getElementById('catFilter').value;
+    const avail = document.getElementById('availFilter').value;
+
+    filtered = allBooks.filter(b => {
+      const matchQ = !q || b.name.toLowerCase().includes(q) || b.author.toLowerCase().includes(q) || b.isbn.toLowerCase().includes(q);
+      const matchC = !cat || b.category === cat;
+      const matchA = !avail || (avail === 'available' ? b.available > 0 : b.available === 0);
+      return matchQ && matchC && matchA;
+    });
+
+    document.getElementById('bookCount').textContent = `${filtered.length} of ${allBooks.length} books`;
+    const total = Math.ceil(filtered.length / perPage);
+    if (page > total) page = 1;
+    const slice = filtered.slice((page-1)*perPage, page*perPage);
+
+    const tbody = document.getElementById('bookTable');
+    tbody.innerHTML = slice.length ? slice.map((b, i) => {
+      const avBadge = b.available === 0
+        ? '<span class="badge badge-danger">Fully Issued</span>'
+        : b.available < 2
+        ? `<span class="badge badge-warning">${b.available} left</span>`
+        : `<span class="badge badge-success">${b.available} available</span>`;
+      return `<tr>
+        <td class="td-muted">${(page-1)*perPage+i+1}</td>
+        <td><div class="td-bold">${b.name}</div><div class="td-muted">${b.description ? b.description.slice(0,60)+'…' : ''}</div></td>
+        <td>${b.author}</td>
+        <td><span class="badge badge-secondary">${b.category}</span></td>
+        <td class="td-muted">${b.isbn||'—'}</td>
+        <td style="text-align:center;">${b.copies}</td>
+        <td style="text-align:center;">${b.available}</td>
+        <td>${avBadge}</td>
+        <td>
+          <button class="btn btn-sm btn-outline btn-icon" title="Edit" onclick="editBook('${b.id}')">✏️</button>
+          <button class="btn btn-sm btn-danger btn-icon" title="Delete" onclick="delBook('${b.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9" class="empty-state"><div class="empty-icon">📭</div><p>No books found</p></td></tr>';
+
+    renderPagination(total);
+  }
+
+  function renderPagination(total) {
+    const el = document.getElementById('pagination');
+    if (total <= 1) { el.innerHTML = ''; return; }
+    let html = `<span class="page-info">Showing ${Math.min((page-1)*perPage+1, filtered.length)}–${Math.min(page*perPage, filtered.length)} of ${filtered.length}</span>`;
+    html += `<button class="page-btn" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹ Prev</button>`;
+    for (let i = 1; i <= total; i++) {
+      if (i === 1 || i === total || Math.abs(i - page) <= 2)
+        html += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+      else if (Math.abs(i - page) === 3)
+        html += `<span style="padding:0 4px;">…</span>`;
+    }
+    html += `<button class="page-btn" onclick="goPage(${page+1})" ${page===total?'disabled':''}>Next ›</button>`;
+    el.innerHTML = html;
+  }
+  function goPage(p) { page = p; render(); window.scrollTo(0,0); }
+
+  function openModal(book) {
+    document.getElementById('bookId').value = book ? book.id : '';
+    document.getElementById('fName').value = book ? book.name : '';
+    document.getElementById('fAuthor').value = book ? book.author : '';
+    document.getElementById('fCategory').value = book ? book.category : '';
+    document.getElementById('fIsbn').value = book ? book.isbn : '';
+    document.getElementById('fCopies').value = book ? book.copies : '';
+    document.getElementById('fAvailable').value = book ? book.available : '';
+    document.getElementById('fDesc').value = book ? book.description : '';
+    document.getElementById('modalTitle').textContent = book ? 'Edit Book' : 'Add Book';
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('show'); }
+  function editBook(id) { openModal(getBook(id)); }
+
+  function saveBook() {
+    const id = document.getElementById('bookId').value;
+    const name = document.getElementById('fName').value.trim();
+    const author = document.getElementById('fAuthor').value.trim();
+    const category = document.getElementById('fCategory').value;
+    const isbn = document.getElementById('fIsbn').value.trim();
+    const copies = parseInt(document.getElementById('fCopies').value);
+    const available = parseInt(document.getElementById('fAvailable').value);
+    const description = document.getElementById('fDesc').value.trim();
+
+    if (!name || !author || !category || isNaN(copies) || isNaN(available)) { showToast('Please fill all required fields', 'error'); return; }
+    if (available > copies) { showToast('Available copies cannot exceed total copies', 'error'); return; }
+
+    if (id) { updateBook(id, { name, author, category, isbn, copies, available, description }); showToast('Book updated successfully!'); }
+    else { addBook({ name, author, category, isbn, copies, available, description }); showToast('Book added successfully!'); }
+
+    closeModal(); load();
+  }
+
+  function delBook(id) {
+    const b = getBook(id);
+    if (!b) return;
+    const active = getIssues().filter(i => i.bookId === id && i.status === 'issued');
+    if (active.length) { showToast(`Cannot delete — ${active.length} copy/copies currently issued`, 'warning'); return; }
+    if (window.confirm(`Delete "${b.name}"? This cannot be undone.`)) {
+      deleteBook(id); showToast('Book deleted'); load();
+    }
+  }
+
+  document.getElementById('modal').addEventListener('click', e => { if (e.target === document.getElementById('modal')) closeModal(); });
+  load();
+</script>
+</body>
+</html>

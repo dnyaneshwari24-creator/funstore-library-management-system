@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Students — Funstore Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1>🎓 Students</h1>
+        <p id="stuCount">Loading...</p>
+      </div>
+      <button class="btn btn-primary" onclick="openModal()">+ Add Student</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="toolbar" style="margin:0;width:100%;">
+          <div class="search-wrap">
+            <span class="si">🔍</span>
+            <input type="search" id="searchInput" placeholder="Search by name, roll no, email..." oninput="render()" />
+          </div>
+          <select class="form-control" id="yearFilter" style="width:180px;" onchange="render()">
+            <option value="">All Years</option>
+            <option>FY BSc CS</option><option>SY BSc CS</option><option>TY BSc CS</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Roll No</th><th>Name</th><th>Email</th><th>Mobile</th><th>Year</th><th>Address</th><th>Books Issued</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="stuTable"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Add Student</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stuId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Roll Number *</label>
+          <input class="form-control" id="fRoll" placeholder="e.g. BSC051" />
+        </div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input class="form-control" id="fName" placeholder="Student full name" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email *</label>
+          <input class="form-control" id="fEmail" type="email" placeholder="student@college.edu" />
+        </div>
+        <div class="form-group">
+          <label>Mobile</label>
+          <input class="form-control" id="fMobile" placeholder="10-digit mobile number" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Year *</label>
+          <select class="form-control" id="fYear">
+            <option value="">Select Year</option>
+            <option>FY BSc CS</option><option>SY BSc CS</option><option>TY BSc CS</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <input class="form-control" id="fAddress" placeholder="City, State" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStu()">Save Student</button>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY MODAL -->
+<div class="modal-overlay" id="histModal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <h3 id="histTitle">Issue History</h3>
+      <button class="modal-close" onclick="closeHistModal()">✕</button>
+    </div>
+    <div class="modal-body" id="histBody"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="sidebar.js"></script>
+<script>
+  const session = checkAuth();
+  document.getElementById('sidebar').innerHTML = sidebarHTML('students', session);
+
+  let allStudents = [], filtered = [], page = 1, perPage = 15;
+
+  function load() { allStudents = getStudents(); render(); }
+
+  function render() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const yr = document.getElementById('yearFilter').value;
+    filtered = allStudents.filter(s => {
+      const mq = !q || s.name.toLowerCase().includes(q) || s.rollNo.toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
+      const my = !yr || s.year === yr;
+      return mq && my;
+    });
+    document.getElementById('stuCount').textContent = `${filtered.length} of ${allStudents.length} students`;
+    const total = Math.ceil(filtered.length / perPage);
+    if (page > total) page = 1;
+    const slice = filtered.slice((page-1)*perPage, page*perPage);
+    const issues = getIssues();
+    const tbody = document.getElementById('stuTable');
+    tbody.innerHTML = slice.length ? slice.map((s, i) => {
+      const active = issues.filter(is => is.studentId === s.id && is.status === 'issued').length;
+      const total2 = issues.filter(is => is.studentId === s.id).length;
+      return `<tr>
+        <td class="td-muted">${(page-1)*perPage+i+1}</td>
+        <td><span class="badge badge-secondary">${s.rollNo}</span></td>
+        <td class="td-bold">${s.name}</td>
+        <td class="td-muted">${s.email}</td>
+        <td class="td-muted">${s.mobile||'—'}</td>
+        <td><span class="badge badge-info">${s.year}</span></td>
+        <td class="td-muted" style="font-size:12px;">${s.address||'—'}</td>
+        <td style="text-align:center;">
+          ${active > 0 ? `<span class="badge badge-warning">${active} issued</span>` : ''}
+          <a href="#" onclick="showHistory('${s.id}',event)" style="font-size:12px;color:var(--primary);">History (${total2})</a>
+        </td>
+        <td>
+          <button class="btn btn-sm btn-outline btn-icon" onclick="editStu('${s.id}')">✏️</button>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="delStu('${s.id}')">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9" class="empty-state"><div class="empty-icon">🎓</div><p>No students found</p></td></tr>';
+    renderPagination(total);
+  }
+
+  function renderPagination(total) {
+    const el = document.getElementById('pagination');
+    if (total <= 1) { el.innerHTML=''; return; }
+    let html = `<span class="page-info">Showing ${(page-1)*perPage+1}–${Math.min(page*perPage, filtered.length)} of ${filtered.length}</span>`;
+    html += `<button class="page-btn" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹ Prev</button>`;
+    for (let i = 1; i <= total; i++) html += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+    html += `<button class="page-btn" onclick="goPage(${page+1})" ${page===total?'disabled':''}>Next ›</button>`;
+    el.innerHTML = html;
+  }
+  function goPage(p) { page = p; render(); window.scrollTo(0,0); }
+
+  function openModal(s) {
+    document.getElementById('stuId').value = s ? s.id : '';
+    document.getElementById('fRoll').value = s ? s.rollNo : '';
+    document.getElementById('fName').value = s ? s.name : '';
+    document.getElementById('fEmail').value = s ? s.email : '';
+    document.getElementById('fMobile').value = s ? s.mobile : '';
+    document.getElementById('fYear').value = s ? s.year : '';
+    document.getElementById('fAddress').value = s ? s.address : '';
+    document.getElementById('modalTitle').textContent = s ? 'Edit Student' : 'Add Student';
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('show'); }
+  function editStu(id) { openModal(getStudent(id)); }
+
+  function saveStu() {
+    const id = document.getElementById('stuId').value;
+    const rollNo = document.getElementById('fRoll').value.trim();
+    const name = document.getElementById('fName').value.trim();
+    const email = document.getElementById('fEmail').value.trim();
+    const mobile = document.getElementById('fMobile').value.trim();
+    const year = document.getElementById('fYear').value;
+    const address = document.getElementById('fAddress').value.trim();
+    if (!rollNo || !name || !email || !year) { showToast('Please fill all required fields', 'error'); return; }
+    if (id) { updateStudent(id, { rollNo, name, email, mobile, year, address }); showToast('Student updated!'); }
+    else { addStudent({ rollNo, name, email, mobile, year, address }); showToast('Student added!'); }
+    closeModal(); load();
+  }
+
+  function delStu(id) {
+    const s = getStudent(id);
+    const active = getIssues().filter(i => i.studentId === id && i.status === 'issued').length;
+    if (active) { showToast(`Cannot delete — student has ${active} book(s) issued`, 'warning'); return; }
+    if (window.confirm(`Delete student "${s.name}"?`)) { deleteStudent(id); showToast('Student deleted'); load(); }
+  }
+
+  function showHistory(sid, e) {
+    e.preventDefault();
+    const s = getStudent(sid);
+    if (!s) return;
+    const hist = getIssues().filter(i => i.studentId === sid).reverse();
+    document.getElementById('histTitle').textContent = `Issue History — ${s.name} (${s.rollNo})`;
+    document.getElementById('histBody').innerHTML = hist.length
+      ? `<table><thead><tr><th>#</th><th>Book</th><th>Issue Date</th><th>Due Date</th><th>Return Date</th><th>Status</th></tr></thead><tbody>`
+        + hist.map((i,idx) => `<tr>
+          <td class="td-muted">${idx+1}</td>
+          <td class="td-bold">${getBookName(i.bookId)}</td>
+          <td>${formatDate(i.issueDate)}</td>
+          <td>${formatDate(i.dueDate)}</td>
+          <td>${formatDate(i.returnDate)}</td>
+          <td>${getIssueBadge(i)}</td>
+        </tr>`).join('') + `</tbody></table>`
+      : '<div class="empty-state"><div class="empty-icon">📭</div><p>No books issued to this student yet</p></div>';
+    document.getElementById('histModal').classList.add('show');
+  }
+  function closeHistModal() { document.getElementById('histModal').classList.remove('show'); }
+
+  document.getElementById('modal').addEventListener('click', e => { if (e.target === document.getElementById('modal')) closeModal(); });
+  document.getElementById('histModal').addEventListener('click', e => { if (e.target === document.getElementById('histModal')) closeHistModal(); });
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Members — Funstore Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1>👥 Library Members</h1>
+        <p id="memCount">Loading...</p>
+      </div>
+      <button class="btn btn-primary" onclick="openModal()">+ Add Member</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="toolbar" style="margin:0;width:100%;">
+          <div class="search-wrap">
+            <span class="si">🔍</span>
+            <input type="search" id="searchInput" placeholder="Search by name, email..." oninput="render()" />
+          </div>
+          <select class="form-control" id="typeFilter" style="width:160px;" onchange="render()">
+            <option value="">All Types</option>
+            <option>General</option><option>Senior</option><option>Research</option>
+          </select>
+          <select class="form-control" id="statusFilter" style="width:140px;" onchange="render()">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Name</th><th>Email</th><th>Mobile</th><th>Type</th><th>Join Date</th><th>Address</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="memTable"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Add Member</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="memId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input class="form-control" id="fName" placeholder="Member name" />
+        </div>
+        <div class="form-group">
+          <label>Email *</label>
+          <input class="form-control" id="fEmail" type="email" placeholder="email@example.com" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Mobile</label>
+          <input class="form-control" id="fMobile" placeholder="Mobile number" />
+        </div>
+        <div class="form-group">
+          <label>Member Type *</label>
+          <select class="form-control" id="fType">
+            <option value="">Select Type</option>
+            <option>General</option><option>Senior</option><option>Research</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Address</label>
+          <input class="form-control" id="fAddress" placeholder="Address" />
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select class="form-control" id="fStatus">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveMem()">Save Member</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="sidebar.js"></script>
+<script>
+  const session = checkAuth();
+  document.getElementById('sidebar').innerHTML = sidebarHTML('members', session);
+
+  let all = [], filtered = [], page = 1, perPage = 15;
+
+  function load() { all = getMembers(); render(); }
+
+  function render() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const tp = document.getElementById('typeFilter').value;
+    const st = document.getElementById('statusFilter').value;
+    filtered = all.filter(m => {
+      const mq = !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
+      return mq && (!tp || m.memberType === tp) && (!st || m.status === st);
+    });
+    document.getElementById('memCount').textContent = `${filtered.length} of ${all.length} members`;
+    const total = Math.ceil(filtered.length / perPage);
+    if (page > total) page = 1;
+    const slice = filtered.slice((page-1)*perPage, page*perPage);
+    const tbody = document.getElementById('memTable');
+    tbody.innerHTML = slice.length ? slice.map((m, i) =>
+      `<tr>
+        <td class="td-muted">${(page-1)*perPage+i+1}</td>
+        <td class="td-bold">${m.name}</td>
+        <td class="td-muted">${m.email}</td>
+        <td class="td-muted">${m.mobile||'—'}</td>
+        <td><span class="badge badge-purple">${m.memberType||'General'}</span></td>
+        <td class="td-muted">${formatDate(m.joinDate)}</td>
+        <td class="td-muted" style="font-size:12px;">${m.address||'—'}</td>
+        <td><span class="badge ${m.status==='active'?'badge-success':'badge-secondary'}">${m.status}</span></td>
+        <td>
+          <button class="btn btn-sm btn-outline btn-icon" onclick="editMem('${m.id}')">✏️</button>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="delMem('${m.id}')">🗑️</button>
+        </td>
+      </tr>`
+    ).join('') : '<tr><td colspan="9" class="empty-state"><div class="empty-icon">👥</div><p>No members found</p></td></tr>';
+    renderPagination(total);
+  }
+
+  function renderPagination(total) {
+    const el = document.getElementById('pagination');
+    if (total <= 1) { el.innerHTML=''; return; }
+    let html = `<span class="page-info">Showing ${(page-1)*perPage+1}–${Math.min(page*perPage, filtered.length)} of ${filtered.length}</span>`;
+    html += `<button class="page-btn" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹ Prev</button>`;
+    for (let i=1;i<=total;i++) html+=`<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+    html += `<button class="page-btn" onclick="goPage(${page+1})" ${page===total?'disabled':''}>Next ›</button>`;
+    el.innerHTML = html;
+  }
+  function goPage(p) { page=p; render(); }
+
+  function openModal(m) {
+    document.getElementById('memId').value = m ? m.id : '';
+    document.getElementById('fName').value = m ? m.name : '';
+    document.getElementById('fEmail').value = m ? m.email : '';
+    document.getElementById('fMobile').value = m ? m.mobile : '';
+    document.getElementById('fType').value = m ? m.memberType : '';
+    document.getElementById('fAddress').value = m ? m.address : '';
+    document.getElementById('fStatus').value = m ? m.status : 'active';
+    document.getElementById('modalTitle').textContent = m ? 'Edit Member' : 'Add Member';
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('show'); }
+  function editMem(id) { openModal(getMember(id)); }
+
+  function saveMem() {
+    const id = document.getElementById('memId').value;
+    const name = document.getElementById('fName').value.trim();
+    const email = document.getElementById('fEmail').value.trim();
+    const mobile = document.getElementById('fMobile').value.trim();
+    const memberType = document.getElementById('fType').value;
+    const address = document.getElementById('fAddress').value.trim();
+    const status = document.getElementById('fStatus').value;
+    if (!name || !email || !memberType) { showToast('Please fill required fields', 'error'); return; }
+    if (id) { updateMember(id, { name, email, mobile, memberType, address, status }); showToast('Member updated!'); }
+    else { addMember({ name, email, mobile, memberType, address, status }); showToast('Member added!'); }
+    closeModal(); load();
+  }
+
+  function delMem(id) {
+    const m = getMember(id);
+    if (window.confirm(`Delete member "${m.name}"?`)) { deleteMember(id); showToast('Member deleted'); load(); }
+  }
+
+  document.getElementById('modal').addEventListener('click', e => { if (e.target === document.getElementById('modal')) closeModal(); });
+  load();
+</script>
+</body>
+</html>

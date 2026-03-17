@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Issues / Borrows — Funstore Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1>📋 Book Issues &amp; Borrows</h1>
+        <p id="issueCount">Loading...</p>
+      </div>
+      <button class="btn btn-primary" onclick="openIssueModal()">📤 Issue a Book</button>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="stats-grid" id="issueSummary" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="filter-tabs" id="filterTabs">
+          <span class="ftab active" onclick="setFilter('all',this)">All</span>
+          <span class="ftab" onclick="setFilter('issued',this)">📤 Currently Issued</span>
+          <span class="ftab" onclick="setFilter('overdue',this)">⚠️ Overdue</span>
+          <span class="ftab" onclick="setFilter('returned',this)">✅ Returned</span>
+        </div>
+        <div class="search-wrap" style="max-width:280px;">
+          <span class="si">🔍</span>
+          <input type="search" id="searchInput" placeholder="Search student or book..." oninput="render()" />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student (Roll No)</th>
+              <th>Book Title</th>
+              <th>Issue Date</th>
+              <th>Due Date</th>
+              <th>Return Date</th>
+              <th>Days</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="issueTable"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </main>
+</div>
+
+<!-- ISSUE BOOK MODAL -->
+<div class="modal-overlay" id="issueModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>📤 Issue a Book</h3>
+      <button class="modal-close" onclick="closeIssueModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Select Student *</label>
+        <select class="form-control" id="iStudent">
+          <option value="">— Choose Student —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Select Book *</label>
+        <select class="form-control" id="iBook">
+          <option value="">— Choose Book —</option>
+        </select>
+      </div>
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;font-size:13px;color:#0369a1;margin-top:8px;">
+        📅 Issue date: <strong id="issueDateDisplay"></strong> &nbsp;|&nbsp; Due date: <strong id="dueDateDisplay"></strong> (14 days)
+      </div>
+      <div id="issueWarn" style="margin-top:10px;display:none;" class="login-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeIssueModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doIssue()">Confirm Issue</button>
+    </div>
+  </div>
+</div>
+
+<!-- RETURN CONFIRMATION MODAL -->
+<div class="modal-overlay" id="returnModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>✅ Return Book</h3>
+      <button class="modal-close" onclick="closeReturnModal()">✕</button>
+    </div>
+    <div class="modal-body" id="returnBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeReturnModal()">Cancel</button>
+      <button class="btn btn-success" onclick="doReturn()">Confirm Return</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="sidebar.js"></script>
+<script>
+  const session = checkAuth();
+  document.getElementById('sidebar').innerHTML = sidebarHTML('issues', session);
+
+  // Set dates
+  const td = today(), due = addDays(td, 14);
+  document.getElementById('issueDateDisplay').textContent = formatDate(td);
+  document.getElementById('dueDateDisplay').textContent = formatDate(due);
+
+  let activeFilter = 'all', allIssues = [], filtered = [], page = 1, perPage = 15, returnId = null;
+
+  function setFilter(f, el) {
+    activeFilter = f;
+    document.querySelectorAll('.ftab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    page = 1; render();
+  }
+
+  function load() {
+    allIssues = getIssues().slice().reverse();
+    renderSummary();
+    render();
+  }
+
+  function renderSummary() {
+    const is = getIssues();
+    const td2 = today();
+    const items = [
+      { icon:'📋', label:'Total Records',   val: is.length,                                             color:'icon-blue' },
+      { icon:'📤', label:'Currently Issued', val: is.filter(i=>i.status==='issued'&&i.dueDate>=td2).length, color:'icon-yellow' },
+      { icon:'⚠️', label:'Overdue',          val: is.filter(i=>isOverdue(i)).length,                   color:'icon-red' },
+      { icon:'✅', label:'Returned',          val: is.filter(i=>i.status==='returned').length,           color:'icon-green' }
+    ];
+    document.getElementById('issueSummary').innerHTML = items.map(it =>
+      `<div class="stat-card"><div class="stat-icon ${it.color}">${it.icon}</div><div class="stat-info"><h3>${it.val}</h3><p>${it.label}</p></div></div>`
+    ).join('');
+  }
+
+  function render() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const td2 = today();
+    filtered = allIssues.filter(i => {
+      const sn = getStudentName(i.studentId).toLowerCase();
+      const bn = getBookName(i.bookId).toLowerCase();
+      const matchQ = !q || sn.includes(q) || bn.includes(q) || getRollNo(i.studentId).toLowerCase().includes(q);
+      let matchF = true;
+      if (activeFilter === 'issued')   matchF = i.status === 'issued' && i.dueDate >= td2;
+      if (activeFilter === 'overdue')  matchF = isOverdue(i);
+      if (activeFilter === 'returned') matchF = i.status === 'returned';
+      return matchQ && matchF;
+    });
+
+    document.getElementById('issueCount').textContent = `${filtered.length} records`;
+    const total = Math.ceil(filtered.length / perPage);
+    if (page > total) page = 1;
+    const slice = filtered.slice((page-1)*perPage, page*perPage);
+
+    const tbody = document.getElementById('issueTable');
+    tbody.innerHTML = slice.length ? slice.map((i, idx) => {
+      const overdue = isOverdue(i);
+      const dLeft = i.status === 'issued' ? daysLeft(i.dueDate) : null;
+      let daysCell = '—';
+      if (i.status === 'issued') {
+        if (overdue) daysCell = `<span class="badge badge-danger">${Math.abs(dLeft)}d overdue</span>`;
+        else daysCell = `<span class="badge badge-info">${dLeft}d left</span>`;
+      }
+      const actionBtn = i.status === 'issued'
+        ? `<button class="btn btn-sm btn-success" onclick="openReturnModal('${i.id}')">↩ Return</button>`
+        : `<span class="badge badge-secondary">Done</span>`;
+      return `<tr style="${overdue?'background:#fff7f7;':''}">
+        <td class="td-muted">${(page-1)*perPage+idx+1}</td>
+        <td><div class="td-bold">${getStudentName(i.studentId)}</div><div class="td-muted">${getRollNo(i.studentId)}</div></td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${getBookName(i.bookId)}"><div class="td-bold">${getBookName(i.bookId)}</div></td>
+        <td>${formatDate(i.issueDate)}</td>
+        <td>${formatDate(i.dueDate)}</td>
+        <td>${formatDate(i.returnDate)}</td>
+        <td>${daysCell}</td>
+        <td>${getIssueBadge(i)}</td>
+        <td>${actionBtn}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9" class="empty-state"><div class="empty-icon">📭</div><p>No records found</p></td></tr>';
+
+    renderPagination(total);
+  }
+
+  function renderPagination(total) {
+    const el = document.getElementById('pagination');
+    if (total <= 1) { el.innerHTML = ''; return; }
+    let html = `<span class="page-info">Page ${page} of ${total} (${filtered.length} records)</span>`;
+    html += `<button class="page-btn" onclick="goPage(${page-1})" ${page===1?'disabled':''}>‹ Prev</button>`;
+    for (let i = 1; i <= Math.min(total, 8); i++)
+      html += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+    if (total > 8) html += `<span>…</span>`;
+    html += `<button class="page-btn" onclick="goPage(${page+1})" ${page===total?'disabled':''}>Next ›</button>`;
+    el.innerHTML = html;
+  }
+  function goPage(p) { page = p; render(); window.scrollTo(0,0); }
+
+  // Issue Modal
+  function openIssueModal() {
+    // Populate students
+    const students = getStudents().sort((a,b) => a.name.localeCompare(b.name));
+    document.getElementById('iStudent').innerHTML = '<option value="">— Choose Student —</option>' +
+      students.map(s => `<option value="${s.id}">${s.name} (${s.rollNo})</option>`).join('');
+    // Populate available books
+    const books = getBooks().filter(b => b.available > 0).sort((a,b) => a.name.localeCompare(b.name));
+    document.getElementById('iBook').innerHTML = '<option value="">— Choose Book —</option>' +
+      books.map(b => `<option value="${b.id}">${b.name} [${b.available} available]</option>`).join('');
+    document.getElementById('issueWarn').style.display = 'none';
+    document.getElementById('issueModal').classList.add('show');
+  }
+  function closeIssueModal() { document.getElementById('issueModal').classList.remove('show'); }
+
+  function doIssue() {
+    const sid = document.getElementById('iStudent').value;
+    const bid = document.getElementById('iBook').value;
+    const warn = document.getElementById('issueWarn');
+    if (!sid || !bid) { warn.textContent = 'Please select both a student and a book.'; warn.style.display = 'block'; return; }
+    const res = issueBook(bid, sid);
+    if (!res.ok) { warn.textContent = res.msg; warn.style.display = 'block'; return; }
+    closeIssueModal();
+    showToast(`Book issued successfully! Due: ${formatDate(res.record.dueDate)}`);
+    load();
+  }
+
+  // Return Modal
+  function openReturnModal(id) {
+    returnId = id;
+    const issue = getIssue(id);
+    if (!issue) return;
+    const book = getBook(issue.bookId);
+    const student = getStudent(issue.studentId);
+    const overdue = isOverdue(issue);
+    document.getElementById('returnBody').innerHTML = `
+      <div class="info-grid">
+        <div class="info-item"><label>Student</label><p>${student ? student.name : '—'} (${student ? student.rollNo : '—'})</p></div>
+        <div class="info-item"><label>Book</label><p>${book ? book.name : '—'}</p></div>
+        <div class="info-item"><label>Issue Date</label><p>${formatDate(issue.issueDate)}</p></div>
+        <div class="info-item"><label>Due Date</label><p>${formatDate(issue.dueDate)}</p></div>
+      </div>
+      ${overdue ? `<div style="margin-top:14px;padding:12px;background:#fff7f7;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:13px;">
+        ⚠️ This book is <strong>${Math.abs(daysLeft(issue.dueDate))} days overdue</strong>. Please note the late return.
+      </div>` : `<div style="margin-top:14px;padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;color:#166534;font-size:13px;">
+        ✅ Book is being returned on time. Return date: <strong>${formatDate(today())}</strong>
+      </div>`}
+    `;
+    document.getElementById('returnModal').classList.add('show');
+  }
+  function closeReturnModal() { document.getElementById('returnModal').classList.remove('show'); returnId = null; }
+  function doReturn() {
+    if (!returnId) return;
+    returnBook(returnId);
+    closeReturnModal();
+    showToast('Book returned successfully! ✅');
+    load();
+  }
+
+  document.getElementById('issueModal').addEventListener('click', e => { if (e.target === document.getElementById('issueModal')) closeIssueModal(); });
+  document.getElementById('returnModal').addEventListener('click', e => { if (e.target === document.getElementById('returnModal')) closeReturnModal(); });
+  load();
+</script>
+</body>
+</html>

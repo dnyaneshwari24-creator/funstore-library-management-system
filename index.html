@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Funstore Library — Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-big">📚</div>
+      <h1>Funstore Library</h1>
+      <p>Library Management System</p>
+    </div>
+
+    <div class="login-error" id="errMsg">Invalid username or password.</div>
+
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" class="form-control" id="username" placeholder="Enter username" autocomplete="off" />
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" class="form-control" id="password" placeholder="Enter password" />
+    </div>
+    <button class="login-btn" onclick="doLogin()">Login →</button>
+
+    <div class="demo-creds">
+      <p>Demo Credentials</p>
+      <div class="cred-row"><span>👑 Dnyaneshwari</span><code>dnyaneshwari / admin123</code></div>
+      <div class="cred-row"><span>📋 Manager</span><code>manager / manager123</code></div>
+      <div class="cred-row"><span>📖 Librarian</span><code>librarian / lib123</code></div>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+  // If already logged in, redirect
+  if (getSession()) window.location.href = 'dashboard.html';
+
+  document.getElementById('password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+  document.getElementById('username').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('password').focus();
+  });
+
+  function doLogin() {
+    const u = document.getElementById('username').value;
+    const p = document.getElementById('password').value;
+    const err = document.getElementById('errMsg');
+    err.style.display = 'none';
+    if (!u || !p) { err.textContent = 'Please enter username and password.'; err.style.display = 'block'; return; }
+    const session = login(u, p);
+    if (session) {
+      window.location.href = 'dashboard.html';
+    } else {
+      err.textContent = 'Invalid username or password. Please try again.';
+      err.style.display = 'block';
+      document.getElementById('password').value = '';
+    }
+  }
+</script>
+</body>
+</html>

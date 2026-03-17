@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Users & Roles — Funstore Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1>🔑 Users &amp; Roles</h1>
+        <p id="userCount">Loading...</p>
+      </div>
+      <button class="btn btn-primary" onclick="openModal()">+ Add User</button>
+    </div>
+
+    <!-- Roles Summary -->
+    <div id="roleCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-bottom:24px;"></div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>All System Users</h3>
+        <div class="search-wrap" style="max-width:280px;">
+          <span class="si">🔍</span>
+          <input type="search" id="searchInput" placeholder="Search users..." oninput="render()" />
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Name</th><th>Username</th><th>Email</th><th>Mobile</th><th>Role</th><th>Join Date</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="userTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Add User</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="userId" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input class="form-control" id="fName" placeholder="Full name" />
+        </div>
+        <div class="form-group">
+          <label>Username *</label>
+          <input class="form-control" id="fUsername" placeholder="Login username" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Email *</label>
+          <input class="form-control" id="fEmail" type="email" placeholder="email@funstore.com" />
+        </div>
+        <div class="form-group">
+          <label>Mobile</label>
+          <input class="form-control" id="fMobile" placeholder="Mobile number" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Role *</label>
+          <select class="form-control" id="fRole">
+            <option value="">Select Role</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label id="passLabel">Password *</label>
+          <input class="form-control" id="fPassword" type="password" placeholder="Set password" />
+          <div class="form-hint" id="passHint">Leave blank to keep current password (when editing)</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="sidebar.js"></script>
+<script>
+  const session = checkAuth();
+  // Only admins can access this page
+  if (!isAdmin(session)) { showToast('Access denied — Admins only', 'error'); setTimeout(() => window.location.href = 'dashboard.html', 1500); }
+  document.getElementById('sidebar').innerHTML = sidebarHTML('users', session);
+
+  let allUsers = [], roles = [];
+
+  function load() {
+    allUsers = getUsers();
+    roles = getRoles();
+    renderRoleCards();
+    render();
+  }
+
+  function renderRoleCards() {
+    const icons = { 'Administrator': '👑', 'Manager': '📋', 'Librarian': '📖' };
+    const colors = { 'Administrator': 'icon-purple', 'Manager': 'icon-blue', 'Librarian': 'icon-green' };
+    document.getElementById('roleCards').innerHTML = roles.map(r => {
+      const count = allUsers.filter(u => u.roleId === r.id).length;
+      return `<div class="stat-card">
+        <div class="stat-icon ${colors[r.name]||'icon-blue'}">${icons[r.name]||'👤'}</div>
+        <div class="stat-info">
+          <h3>${count}</h3>
+          <p>${r.name}</p>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:2px;">${r.description}</p>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function render() {
+    const q = document.getElementById('searchInput').value.toLowerCase();
+    const filtered = allUsers.filter(u =>
+      !q || u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+    );
+    document.getElementById('userCount').textContent = `${filtered.length} system users`;
+    const tbody = document.getElementById('userTable');
+    tbody.innerHTML = filtered.length ? filtered.map((u, i) => {
+      const role = roles.find(r => r.id === u.roleId);
+      const isMe = u.id === session.id;
+      const roleBadge = role
+        ? role.name === 'Administrator' ? `<span class="badge badge-purple">${role.name}</span>`
+        : role.name === 'Manager'       ? `<span class="badge badge-info">${role.name}</span>`
+        :                                 `<span class="badge badge-success">${role.name}</span>`
+        : '<span class="badge badge-secondary">Unknown</span>';
+      return `<tr ${isMe ? 'style="background:#f5f3ff;"' : ''}>
+        <td class="td-muted">${i+1}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:30px;height:30px;background:var(--primary);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:13px;">${avatarLetter(u.name)}</div>
+            <div><div class="td-bold">${u.name} ${isMe ? '<span style="font-size:11px;color:var(--primary);">(You)</span>' : ''}</div></div>
+          </div>
+        </td>
+        <td><code style="font-size:12px;background:#f1f5f9;padding:2px 8px;border-radius:4px;">${u.username}</code></td>
+        <td class="td-muted">${u.email}</td>
+        <td class="td-muted">${u.mobile||'—'}</td>
+        <td>${roleBadge}</td>
+        <td class="td-muted">${formatDate(u.joinDate)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline btn-icon" onclick="editUser('${u.id}')">✏️</button>
+          ${!isMe ? `<button class="btn btn-sm btn-danger btn-icon" onclick="delUser('${u.id}')">🗑️</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="8" class="empty-state"><div class="empty-icon">👤</div><p>No users found</p></td></tr>';
+  }
+
+  function openModal(u) {
+    document.getElementById('userId').value = u ? u.id : '';
+    document.getElementById('fName').value = u ? u.name : '';
+    document.getElementById('fUsername').value = u ? u.username : '';
+    document.getElementById('fEmail').value = u ? u.email : '';
+    document.getElementById('fMobile').value = u ? u.mobile : '';
+    document.getElementById('fPassword').value = '';
+    document.getElementById('passHint').style.display = u ? 'block' : 'none';
+    // Populate roles
+    document.getElementById('fRole').innerHTML = '<option value="">Select Role</option>' +
+      roles.map(r => `<option value="${r.id}" ${u && u.roleId===r.id?'selected':''}>${r.name}</option>`).join('');
+    document.getElementById('fRole').value = u ? u.roleId : '';
+    document.getElementById('modalTitle').textContent = u ? 'Edit User' : 'Add User';
+    document.getElementById('modal').classList.add('show');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('show'); }
+  function editUser(id) { openModal(allUsers.find(u => u.id === id)); }
+
+  function saveUser() {
+    const id = document.getElementById('userId').value;
+    const name = document.getElementById('fName').value.trim();
+    const username = document.getElementById('fUsername').value.trim();
+    const email = document.getElementById('fEmail').value.trim();
+    const mobile = document.getElementById('fMobile').value.trim();
+    const roleId = document.getElementById('fRole').value;
+    const password = document.getElementById('fPassword').value;
+
+    if (!name || !username || !email || !roleId) { showToast('Please fill all required fields', 'error'); return; }
+    if (!id && !password) { showToast('Password is required for new users', 'error'); return; }
+
+    // Check duplicate username
+    const dup = allUsers.find(u => u.username === username && u.id !== id);
+    if (dup) { showToast('Username already exists', 'error'); return; }
+
+    if (id) {
+      const upd = { name, username, email, mobile, roleId };
+      if (password) upd.password = password;
+      updateUser(id, upd);
+      showToast('User updated successfully!');
+    } else {
+      addUser({ name, username, email, mobile, roleId, password });
+      showToast('User added successfully!');
+    }
+    closeModal(); load();
+  }
+
+  function delUser(id) {
+    const u = allUsers.find(u2 => u2.id === id);
+    if (!u) return;
+    if (u.id === session.id) { showToast('You cannot delete your own account', 'warning'); return; }
+    if (window.confirm(`Delete user "${u.name}"? They will lose access immediately.`)) {
+      deleteUser(id); showToast('User deleted'); load();
+    }
+  }
+
+  document.getElementById('modal').addEventListener('click', e => { if (e.target === document.getElementById('modal')) closeModal(); });
+  load();
+</script>
+</body>
+</html>

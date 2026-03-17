@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Funstore Library</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="page-header">
+      <div class="page-header-left">
+        <h1>📊 Dashboard</h1>
+        <p id="welcomeMsg">Welcome back!</p>
+      </div>
+      <div style="font-size:13px;color:var(--text-muted);" id="dateDisplay"></div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <!-- DASHBOARD GRID -->
+    <div class="dashboard-grid">
+      <!-- Recent Issues -->
+      <div class="card">
+        <div class="card-header">
+          <h3>📋 Recent Issues</h3>
+          <a href="issues.html" class="btn btn-sm btn-outline">View All</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Student</th><th>Book</th><th>Due Date</th><th>Status</th></tr></thead>
+            <tbody id="recentIssues"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Overdue Books -->
+      <div class="card">
+        <div class="card-header">
+          <h3>⚠️ Overdue Books</h3>
+          <a href="issues.html" class="btn btn-sm btn-outline">View All</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Student</th><th>Book</th><th>Due</th><th>Days</th></tr></thead>
+            <tbody id="overdueList"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Books by Category -->
+    <div class="card" style="margin-top:20px;">
+      <div class="card-header"><h3>📚 Books by Category</h3></div>
+      <div class="card-body">
+        <div id="categoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script>
+  const session = checkAuth();
+
+  document.getElementById('welcomeMsg').textContent = `Welcome back, ${session.name}!`;
+  document.getElementById('dateDisplay').textContent = new Date().toLocaleDateString('en-IN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  // Stats
+  const st = getStats();
+  const statsData = [
+    { icon:'📚', label:'Total Books',     value: st.totalBooks,    color:'icon-blue' },
+    { icon:'📖', label:'Total Copies',    value: st.totalCopies,   color:'icon-purple' },
+    { icon:'✅', label:'Available',        value: st.available,     color:'icon-green' },
+    { icon:'🎓', label:'Students',         value: st.totalStudents, color:'icon-teal' },
+    { icon:'👥', label:'Members',          value: st.totalMembers,  color:'icon-orange' },
+    { icon:'📤', label:'Currently Issued', value: st.activeIssues,  color:'icon-yellow' },
+    { icon:'⚠️', label:'Overdue',          value: st.overdueCount,  color:'icon-red' },
+    { icon:'🔄', label:'Total Issued',     value: st.totalIssues,   color:'icon-blue' }
+  ];
+  document.getElementById('statsGrid').innerHTML = statsData.map(s =>
+    `<div class="stat-card">
+      <div class="stat-icon ${s.color}">${s.icon}</div>
+      <div class="stat-info"><h3>${s.value}</h3><p>${s.label}</p></div>
+    </div>`
+  ).join('');
+
+  // Recent Issues (last 7)
+  const allIssues = getIssues().slice().reverse().slice(0, 7);
+  const riBody = document.getElementById('recentIssues');
+  riBody.innerHTML = allIssues.length ? allIssues.map(i =>
+    `<tr>
+      <td class="td-bold">${getStudentName(i.studentId)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${getBookName(i.bookId)}">${getBookName(i.bookId)}</td>
+      <td>${formatDate(i.dueDate)}</td>
+      <td>${getIssueBadge(i)}</td>
+    </tr>`
+  ).join('') : '<tr><td colspan="4" class="empty-state">No issues yet</td></tr>';
+
+  // Overdue List
+  const overdueList = getIssues().filter(i => isOverdue(i)).slice(0, 6);
+  const odBody = document.getElementById('overdueList');
+  odBody.innerHTML = overdueList.length ? overdueList.map(i => {
+    const days = Math.abs(daysLeft(i.dueDate));
+    return `<tr>
+      <td class="td-bold">${getStudentName(i.studentId)}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${getBookName(i.bookId)}</td>
+      <td>${formatDate(i.dueDate)}</td>
+      <td><span class="badge badge-danger">${days}d</span></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--success);">✅ No overdue books!</td></tr>';
+
+  // Category summary
+  const books = getBooks();
+  const catMap = {};
+  books.forEach(b => { if (!catMap[b.category]) catMap[b.category] = { total: 0, available: 0 }; catMap[b.category].total++; catMap[b.category].available += b.available; });
+  const catColors = ['icon-blue','icon-green','icon-yellow','icon-red','icon-purple','icon-orange','icon-teal'];
+  let ci = 0;
+  document.getElementById('categoryGrid').innerHTML = Object.entries(catMap).map(([cat, d]) =>
+    `<div class="stat-card" style="padding:14px;">
+      <div class="stat-icon ${catColors[ci++ % catColors.length]}" style="width:40px;height:40px;font-size:18px;">📂</div>
+      <div class="stat-info"><h3 style="font-size:20px;">${d.total}</h3><p>${cat}</p><p style="font-size:11px;margin-top:2px;">${d.available} available</p></div>
+    </div>`
+  ).join('');
+
+</script>
+<script src="sidebar.js"></script>
+<script>
+  document.getElementById('sidebar').innerHTML = sidebarHTML('dashboard', session);
+</script>
+</body>
+</html>
